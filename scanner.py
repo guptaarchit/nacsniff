@@ -4,7 +4,6 @@ import wx
 import time
 import os
 import sys
-import select
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 from sniffer_socket import sniffer
 from help_window import *
@@ -19,6 +18,21 @@ import scapy.layers.l2
 import scapy.route
 import math
 from datetime import datetime
+import logging
+
+LOG_FILENAME = 'scanner__log.out'
+logging.basicConfig(filename=LOG_FILENAME,
+                    level=logging.INFO,
+                    )
+
+# create logger
+lgr = logging.getLogger('myapp')
+lgr.setLevel(logging.DEBUG)
+# add a file handler
+fh = logging.FileHandler('myapp.log')
+fh.setLevel(logging.INFO)
+# add the Handler to the logger
+lgr.addHandler(fh)
 
 serial_num = 0
 
@@ -48,8 +62,6 @@ class SortedListCtrl(wx.ListCtrl, ColumnSorterMixin):
         item = self.GetItem(index, col)
         return item.GetText()
 
-
-
     def OnColClick(self,event):
         event.Skip()
 
@@ -61,7 +73,7 @@ class SortedListCtrl(wx.ListCtrl, ColumnSorterMixin):
                             self.getColumnText(self.currentItem, 1),
                             self.getColumnText(self.currentItem, 2)))
         host_address=self.GetItemText(self.currentItem)
-        self.host_window=host_information(None,-1, 'nacsnif',str(host_address))
+        self.host_window=host_information(str(host_address))
         self.host_window.Show()
 
 
@@ -78,7 +90,8 @@ class SortedListCtrl(wx.ListCtrl, ColumnSorterMixin):
         print("OnItemDeselected: %s" % evt.m_itemIndex)
         
     def OnQuit(self, event):
-        self.host_window.Close()
+        if 'host_window' in locals():
+            self.host_window.Close()
         self.Close()
 
 
@@ -132,10 +145,6 @@ class scanner_window(wx.Frame):
 #        self.Bind(wx.EVT_TOOL, self.OnOpen, id=3)
         self.Bind(wx.EVT_TOOL,self.OnHelp,id=2)
         # self.Bind(wx.EVT_TOOL, self.OnSave, id=6)
-    # def start(self):
-    #     # self.sniffer_obj = sniffer(self.arg)
-    #     print "Here"
-    #     # self.sniffer_obj.event_packet_is_received += self.handle_ip_packet
 
     def OnUndo(self, e):
         if self.count > 1 and self.count <= 5:
@@ -160,24 +169,17 @@ class scanner_window(wx.Frame):
     def OnQuit(self, e):    #to quit the program through menu item in file menu
         #self.data_store.save()
         
-        print "Capture Window Closed"
+        print "Scan Window Closed"
         self.list.OnQuit(e)
-        # if self.packet_info != None:
-        #     self.packet_info.Close()
-        #self.On
         self.Close()
 
     def OnStart(self,event):
+        lgr.info('log started')
         self.thread_stop = threading.Event()
         self.thread = threading.Thread(target=self.scan ,args=(1,self.thread_stop))
         self.thread.setDaemon(True)
         self.thread.start()
         print "started"
-        # hosts_list = scan.main()
-
-    def OnSelection(self,e):
-    	pass
-
 
     def OnHelp(self,e):
         #app = wx.App()
@@ -187,10 +189,10 @@ class scanner_window(wx.Frame):
 
     def OnStop(self,event):
         self.thread_stop.set()
-        print "Foo"
 
     def OnSave(self, event):
         # Open the file, do an RU sure check for an overwrite!
+        self.dirname = "."
         dlg = wx.FileDialog(self, "Choose a file", self.dirname, "", "*.*|*", \
                 wx.SAVE | wx.OVERWRITE_PROMPT)
         if dlg.ShowModal() == wx.ID_OK:
@@ -264,7 +266,7 @@ class scanner_window(wx.Frame):
                     nm = nmap.PortScanner()
                     t1 = datetime.now()
                     # nma.scan(hosts=net,arguments="-sP -T4", callback=callback_result)
-                    nm.scan(hosts=net,arguments="-sP -T4 -n --max-rtt-timeout 500ms")
+                    nm.scan(hosts=net,arguments="-sP -T4 --max-rtt-timeout 500ms")
                     #print nm.scaninfo()
                     #or maybe this
                     # hosts_list = [(x, nm[x]['status']['state'],nm[x].hostname()) for x in nm.all_hosts()]
@@ -282,15 +284,17 @@ class scanner_window(wx.Frame):
                         print('----------------------------------------------------')
                         print('Host : {0} ({1})'.format(host, nm[host].hostname()))
                         print('State : {0}'.format(nm[host].state()))
+                        lgr.info('Host : ' + nm[host].hostname() + ' State : ' + nm[host].state() )
                         host_count+=1
                         for proto in nm[host].all_protocols():
                             print('----------')
                             print('Protocol : {0}'.format(proto))
-
+                            lgr.info('Protocol :' + proto )
                             lport = list(nm[host][proto].keys())
                             lport.sort()
                             for port in lport:
                                 print('port : {0}\tstate : {1}'.format(port, nm[host][proto][port])) 
+                                lgr.info('port : ' + str(port) + ' state : ' + str(nm[host][proto][port]))
                                 if port == "mac":
                                     if str(nm[host].hostname()) != '':        
                                         # data_={1:(str(host),str(nm[host].hostname()),str(nm[host][proto][port]))}
@@ -335,16 +339,11 @@ def display_menu_bar(tempo):
         
     edit_menu = wx.Menu()
     copy_item = edit_menu.Append(wx.ID_COPY,   'Copy', 'Copy application')
-    find_packet_item = edit_menu.Append(wx.ID_ANY,   'Find Packet', 'Find packet application')
-    find_next_item = edit_menu.Append(wx.ID_ANY,   'Find Next', 'Finding next packet application')
-    find_previous_item = edit_menu.Append(wx.ID_ANY,   'Find Previous', 'finding Previous packet application')
     menubar.Append(edit_menu, '&Edit')
 
     go_menu = wx.Menu()
     back = go_menu.Append(wx.ID_ANY,   'Back', 'back application')
     forward = go_menu.Append(wx.ID_ANY,   'Forward', 'forward application')
-    go_to_packet = go_menu.Append(wx.ID_ANY,   'Go to Packet', 'go to packet application')
-    go_to_corresponding_packet = go_menu.Append(wx.ID_ANY,   'Go to corresponding Packet', 'go to corrsponding packet application')        
     menubar.Append(go_menu, '&Go')
     
     help_menu=wx.Menu()

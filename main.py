@@ -1,30 +1,29 @@
 import wx
 import sys
-from scanner import *
 from capture import *
 import netifaces
 import wx.lib.buttons
 from sniffer_socket import *
 from help_window import *
-
+from scanner import *
 class ListCtrlLeft(wx.Frame):
     def __init__(self, parent, id):
         wx.Frame.__init__(self, None, wx.ID_ANY, 'wxBitmapButton', size=(300, 350))
         self.list1=[]
         capture_image = "images/capture.jpg"
         image1 = wx.Image(capture_image, wx.BITMAP_TYPE_ANY).ConvertToBitmap()
-        self.capture_button = wx.BitmapButton(parent, id=-1, bitmap=image1,pos=(70, 40), size = (200, 100))
+        self.capture_button = wx.BitmapButton(parent, id=-1, bitmap=image1,pos=(70, 70), size = (200, 100))
         self.capture_button.Bind(wx.EVT_BUTTON, self.capture)
 
         interface_image = "images/interface.jpg"
         image2 = wx.Image(interface_image, wx.BITMAP_TYPE_ANY).ConvertToBitmap()
-        self.interface_button = wx.BitmapButton(parent, id=-1, bitmap=image2,pos=(70, 170), size = (200, 100))
+        self.interface_button = wx.BitmapButton(parent, id=-1, bitmap=image2,pos=(70, 200), size = (200, 100))
         self.interface_button.Bind(wx.EVT_BUTTON, self.OnSelect)
         self.parent=parent
 
-        scanner_image = "images/interface.jpg"
+        scanner_image = "images/scanner.jpg"
         image2 = wx.Image(scanner_image, wx.BITMAP_TYPE_ANY).ConvertToBitmap()
-        self.interface_button = wx.BitmapButton(parent, id=-1, bitmap=image2,pos=(70, 300), size = (200, 100))
+        self.interface_button = wx.BitmapButton(parent, id=-1, bitmap=image2,pos=(70, 330), size = (200, 100))
         self.interface_button.Bind(wx.EVT_BUTTON, self.OnScannerSelect)
         self.parent=parent
 
@@ -33,13 +32,13 @@ class ListCtrlLeft(wx.Frame):
         self.SetColumnWidth(0, size.x-5)
         event.Skip()
 
+    def OnScannerSelect(self, event):
+        self.scan_initiater = scanner_window(None,-1, 'Online Hosts',"lo")
+        self.scan_initiater.Show()
+
     def OnSelect(self, event):
         window = self.parent.GetGrandParent().FindWindowByName('interface_list')
         window.LoadData()
-
-    def OnScannerSelect(self, event):
-        scan_initiater = scanner_window(None,-1, 'Online Hosts',"lo")
-        scan_initiater.Show()
 
     def OnDeSelect(self, event):
         index = event.GetIndex()
@@ -50,11 +49,13 @@ class ListCtrlLeft(wx.Frame):
 
     def capture(self, event):
         window = self.parent.GetGrandParent().FindWindowByName('interface_list')
-        interface_selected= window.OnSelect1()
+        interface_selected=window = window.OnSelect1()
         print interface_selected    
+  
     def OnQuit(self, e):    #to quit the program through menu item in file menu
         self.Close()
-
+        # if 'scan_initiater' in locals():
+        self.scan_initiater.Close()
 
 class interface_list(wx.ListCtrl):
     def __init__(self, parent, id):
@@ -76,8 +77,8 @@ class interface_list(wx.ListCtrl):
 
     def OnSelect1(self):
         if self.selection != "":
-            capture_frame = Nacsnif(self,-1, 'nacsnif',self.selection)
-            capture_frame.Show()
+            self.capture_frame = Nacsnif(self,-1, 'nacsnif',self.selection)
+            self.capture_frame.Show()
         else:
             pass  #Add warning window        
 
@@ -94,11 +95,14 @@ class interface_list(wx.ListCtrl):
             self.InsertStringItem(0,item)
             self.interface_list.append(item)
 
+    def OnQuit(self, e):    #to quit the program through menu item in file menu
+        self.Close()
+        self.capture_frame.Close()
 
 class Reader(wx.Frame):
     def __init__(self, parent, id, title):
         wx.Frame.__init__(self, parent, id, title, size=(700,600))
-        display_menu_bar(self)
+        disp_menu_bar(self)
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         splitter = wx.SplitterWindow(self, -1, style=wx.SP_LIVE_UPDATE|wx.SP_NOBORDER)
 
@@ -189,11 +193,6 @@ class Reader(wx.Frame):
     def OnHelp(self,e):
         self.l=HelpWindow(None, -1, 'HelpWindow')
 
-    def ExitApp(self, event):
-        self.list1.Close()
-        self.list2.Close()
-        self.Close()
-
     def OnUndo(self, e):
         if self.count > 1 and self.count <= 5:
             self.count = self.count - 1
@@ -214,8 +213,46 @@ class Reader(wx.Frame):
         if self.count == 2:
             self.toolbar.EnableTool(wx.ID_UNDO, True)   
 
+    def OnSave(self, e):
+        pass
+	
+	def OnOpen(self, e):
+		pass
 
+def disp_menu_bar(tempo):
+    menubar = wx.MenuBar()
+    fileMenu = wx.Menu()
+    new_item = fileMenu.Append(wx.ID_NEW,   'New', 'New application')
+    open_item = fileMenu.Append(wx.ID_OPEN,   'Open', 'Open application')
+    save_as_item = fileMenu.Append(wx.ID_SAVE,   'Save', 'Save application')        
+    exit_item = fileMenu.Append(wx.ID_EXIT, 'Quit', 'Quit application')
+    menubar.Append(fileMenu, '&File')
+        
+    edit_menu = wx.Menu()
+    copy_item = edit_menu.Append(wx.ID_COPY,   'Copy', 'Copy application')
+    find_packet_item = edit_menu.Append(wx.ID_ANY,   'Find Packet', 'Find packet application')
+    find_next_item = edit_menu.Append(wx.ID_ANY,   'Find Next', 'Finding next packet application')
+    find_previous_item = edit_menu.Append(wx.ID_ANY,   'Find Previous', 'finding Previous packet application')
+    menubar.Append(edit_menu, '&Edit')
 
+    go_menu = wx.Menu()
+    back = go_menu.Append(wx.ID_ANY,   'Back', 'back application')
+    forward = go_menu.Append(wx.ID_ANY,   'Forward', 'forward application')
+    go_to_packet = go_menu.Append(wx.ID_ANY,   'Go to Packet', 'go to packet application')
+    go_to_corresponding_packet = go_menu.Append(wx.ID_ANY,   'Go to corresponding Packet', 'go to corrsponding packet application')        
+    menubar.Append(go_menu, '&Go')
+    
+    help_menu=wx.Menu()
+    Help=help_menu.Append(wx.ID_ANY,'Help','about application')
+    menubar.Append(help_menu,'&Help')
+
+    tempo.SetMenuBar(menubar)
+    
+    tempo.Bind(wx.EVT_MENU, tempo.OnQuit, exit_item)
+    tempo.Bind(wx.EVT_MENU,tempo.OnHelp,Help)
+    tempo.Bind(wx.EVT_MENU,tempo.OnSave,save_as_item)
+    #tempo.Bind(wx.EVT_MENU,tempo.OnOpen,open_item)
+    # wx.EVT_MENU(tempo,101,tempo.OnSave )
 
 app = wx.App()
 #app.setStyle('cleanlooks')

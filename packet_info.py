@@ -114,9 +114,9 @@ class packet_information(wx.Frame):
             checksum=wx.StaticText(self, label='Checksum', pos=(10,270))
             #data=wx.StaticText(self, label='Data', pos=(10,270))
             source_port.SetFont(font1)
-            sequence.SetFont(font1)    
-            tcp_header_length.SetFont(font1)
-            dest_port.SetFont(font1)
+            dest_port.SetFont(font1)    
+            length.SetFont(font1)
+            checksum.SetFont(font1)
             
             #data.SetFont(font1)
             for count in range(1,5):
@@ -140,3 +140,4 @@ class packet_information(wx.Frame):
         self.SetTitle('Packet Information')
         self.Centre()
         self.Show(True)  
+
