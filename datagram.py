@@ -17,9 +17,15 @@ class ipv4datagram(object):
         self.source_addr = None
         self.dest_addr = None
         self.id = None
+        self.dict = {}
         if packet != None:
             self.parse_ip_packet(packet)
 
+    def fill_dict(self):
+        self.dict = { 'dest_mac_addr' : self.dest_mac_addr, 'src_mac_addr': self.src_mac_addr, 'eth_protocol' : self.eth_protocol,
+            'ip_version' : self.ip_version, 'ihl' : self.ihl , 'ttl' : self.ttl, 'protocol' : self.protocol, 'source_addr' : self.source_addr,
+            'dest_addr' : self.dest_addr
+        }
     def parse_ip_packet(self,packet):
 
         self.data = packet
@@ -44,7 +50,7 @@ class ipv4datagram(object):
         # print 'Version : ' + str(self.ip_version) + ' IP Header Length : ' + str(self.ihl) + ' TTL : ' + str(self.ttl) + \
         #     ' Protocol : ' + str(self.protocol) + ' Source Address : ' \
         #         + str(self.source_addr) + ' Destination Address : ' + str(self.dest_addr)
-    
+        self.fill_dict()
     def getprotocol(self):
         if self.protocol == 6:
             return "TCP"
@@ -176,23 +182,33 @@ class datamanager(object):
             self.packet_list[self.num_of_packets] = packet
             packet.id = self.num_of_packets
     
-    def save(self):
+    def save(self,filehandle):
         newfile=open("sniff_file","wb")
         print "packets",self.num_of_packets
         for key,val in self.packet_list.items():
             newfile.write(val.data)
             newfile.write("\r\n")
+            filehandle.write(val.data)
+            filehandle.write("\r\n")
             
-    def readfile(self):
-        newfile = open("sniff_file","rb")
+    def readfile(self,filehandle):
         list_pack = []
-        block = newfile.read()
-        lines = block.split("\r\n")
-        print len(lines)
-        newfile.close()
-        for line in lines:
-            # print line
-            list_pack.append(line)
+        map_pack = []
+        if filehandle == None:
+            newfile = open("sniff_file","rb")
+            block = newfile.read()
+            lines = block.split("\r\n")
+            print len(lines)
+            for line in lines:
+                # print line
+                list_pack.append(line)
+            newfile.close()
+        else:
+            block = filehandle.read()
+            lines = block.split("\r\n")
+            print len(lines)
+            for line in lines:
+                list_pack.append(line)
 
         list_pack.pop()
         return list_pack

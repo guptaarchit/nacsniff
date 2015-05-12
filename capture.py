@@ -2,6 +2,7 @@
 
 import wx
 import time
+import os
 import sys
 import select
 from wx.lib.mixins.listctrl import ColumnSorterMixin
@@ -10,7 +11,7 @@ from help_window import *
 from packet_info import *
 from datagram import ipv4datagram,datamanager
 import threading
-serial_num = 0
+from separate_dialog import Filterdialog
 
 class SortedListCtrl(wx.ListCtrl, ColumnSorterMixin):
     def __init__(self, parent):
@@ -55,10 +56,11 @@ class Nacsnif(wx.Frame):
         self.sniffer_obj.event_packet_is_received += self.handle_ip_packet
 
         self.data_store = datamanager()
+        self.dirname = ''
         #self.list.SetSelection(0)
         self.Bind(wx.EVT_LIST_ITEM_SELECTED, self.OnSelection)        # self.start(self.sniffer_obj)
         # self.sniffer_obj.start()
-
+        self.has_filter = False
     def toolbar_icons(self):
         toolbar = self.CreateToolBar()
         self.count=5
@@ -85,9 +87,11 @@ class Nacsnif(wx.Frame):
         self.Bind(wx.EVT_TOOL, self.OnReload, id=7)
         self.Bind(wx.EVT_TOOL, self.OnStart, id=4)
         self.Bind(wx.EVT_TOOL, self.OnStop, id=8)
-        self.Bind(wx.EVT_TOOL, self.open_packets, id=3)
+        self.Bind(wx.EVT_TOOL, self.OnOpen, id=3)
         self.Bind(wx.EVT_TOOL,self.OnHelp,id=2)
+        self.Bind(wx.EVT_TOOL,self.Onfilter,id=5)
 
+        # self.Bind(wx.EVT_TOOL, self.OnSave, id=6)
     # def start(self):
     #     # self.sniffer_obj = sniffer(self.arg)
     #     print "Here"
@@ -114,7 +118,7 @@ class Nacsnif(wx.Frame):
             self.toolbar.EnableTool(wx.ID_UNDO, True) 
 
     def OnQuit(self, e):    #to quit the program through menu item in file menu
-        self.data_store.save()
+        #self.data_store.save()
         self.sniffer_obj.close()
         print "Capture Window Closed"
         self.list.OnQuit(e)
@@ -122,24 +126,20 @@ class Nacsnif(wx.Frame):
         #     self.packet_info.Close()
         #self.On
         self.Close()
+
     def OnStart(self,event):
         self.thread_stop = threading.Event()
         self.thread = threading.Thread(target=self.new ,args=(1,self.thread_stop))
         self.thread.setDaemon(True)
         self.thread.start()
         print "started"
+
     def OnSelection(self,e):
         index = e.GetIndex()
         #k=self.list.GetItemText(index)
-        #self.values = [self.GetItem(itemId=index, col=0).GetText()]
-        #self.values=self.list_ctrl.GetItem(itemId=index,col=0)
         values0=self.list.GetItem(itemId=index,col=0)
         # values1=self.list.GetItem(itemId=index,col=1)
         # values2=self.list.GetItem(itemId=index,col=2)
-        # values3=self.list.GetItem(itemId=index,col=3)
-        # values4=self.list.GetItem(itemId=index,col=4)
-        # values5=self.list.GetItem(itemId=index,col=5)
-        # values6=self.list.GetItem(itemId=index,col=6)
 
         if int(values0.GetText()) in self.data_store.packet_list:
             print "yeah",values0.GetText()
@@ -174,22 +174,32 @@ class Nacsnif(wx.Frame):
             elif proto == "ICMP":
                 pass
 
-
-        # # self.data_store.packet_list[]
-        #print "kcdkhbdsfjhdskfsdfgsdk",values0.GetText()
-        # view_packet_info([values0.GetText(),values1.GetText(),values2.GetText(),values3.GetText(),values4.GetText(),values5.GetText(),values6.GetText()])    
         self.packet_info = packet_information(data_array)
         self.packet_info.Show()
     def OnHelp(self,e):
         #app = wx.App()
         self.l=HelpWindow(None, -1, 'HelpWindow')
         #app.MainLoop()
+
+
     def OnStop(self,event):
         self.thread_stop.set()
-        print "Foo"
 
-    def On_save(self, event):
-        self.data_store.save()
+    def OnSave(self, event):
+        # Open the file, do an RU sure check for an overwrite!
+        dlg = wx.FileDialog(self, "Choose a file", self.dirname, "", "*.*|*", \
+                wx.SAVE | wx.OVERWRITE_PROMPT)
+        if dlg.ShowModal() == wx.ID_OK:
+            
+            # Open the file for write, write, close
+            self.filename=dlg.GetFilename()
+            self.dirname=dlg.GetDirectory()
+            filehandle=open(os.path.join(self.dirname, self.filename),'wb')
+            self.data_store.save(filehandle)
+            #filehandle.write(itcontains)
+            filehandle.close()
+        # Get rid of the dialog to keep things tidy
+        dlg.Destroy()
 
     def new(self,arg,stop_event):
         # Need to do this better
@@ -200,6 +210,26 @@ class Nacsnif(wx.Frame):
             wx.CallAfter(self.capture)
 
         # wx.CallAfter(self.sniffer_obj.close)
+    def Onfilter(self,event):
+        appfilter = Filterdialog(None, 
+            title='Apply Filter')
+        appfilter.ShowModal()
+        self.filter_option,self.filter_string = appfilter.GetFilterValue()
+        appfilter.Destroy()
+        self.has_filter=True
+
+    def filter(self,filter_option,filter_string,packet):
+        if isinstance(packet,ipv4datagram):
+            print filter_option,packet.dict.keys()
+            if filter_option in packet.dict.keys():
+                print packet.dict[filter_option],filter_string
+                if str(packet.dict[filter_option]) == str(filter_string):
+                    return True
+                else:
+                    return False
+            else:
+                print "Not Found\n"
+                return False
 
     def capture(self):
         self.sniffer_obj.running=True
@@ -212,8 +242,6 @@ class Nacsnif(wx.Frame):
                     packet = self.sniffer_obj.sock.recvfrom(65565);    
                 except socket.timeout, e:
                     err = e.args[0]
-                    # this next if/else is a bit redundant, but illustrates how the
-                    # timeout exception is setup
                     if err == 'timed out':
                         sleep(1)
                         print 'recv timed out, retry later'
@@ -238,23 +266,36 @@ class Nacsnif(wx.Frame):
                         print "IP Packet"
                         self.sniffer_obj.parse_ip_packet(packet)
                         ip_packet = ipv4datagram(source_mac,dest_mac,eth_protocol,packet)
+                        if self.has_filter:
+                            val = self.filter(self.filter_option,self.filter_string,ip_packet)
+                            print "Filter Value \n\n",val
+                            if val:
+                                self.data_store.add_packet(ip_packet)
+                                data_ = {1: (str(ip_packet.id),str(time.clock()),str(ip_packet.source_addr),str(ip_packet.dest_addr),str(len(ip_packet.data)),ip_packet.getprotocol(),str(ip_packet.ttl))}  
+                                items = data_.items()
 
-                        print "timeeeee",time.clock()
-                        global serial_num
-                        serial_num+=1
-                        data_ = {1: (str(serial_num),str(time.clock()),str(ip_packet.source_addr),str(ip_packet.dest_addr),str(len(ip_packet.data)),ip_packet.getprotocol(),str(ip_packet.ttl))}  
-                        items = data_.items()
+                                for key, data in items:
+                                    index = self.list.InsertStringItem(sys.maxint, data[0])
+                                    self.list.SetStringItem(index, 1, data[1])
+                                    self.list.SetStringItem(index, 2, data[2])
+                                    self.list.SetStringItem(index, 3, data[3])
+                                    self.list.SetStringItem(index, 4, data[4])
+                                    self.list.SetStringItem(index, 5, data[5])
+                                    self.list.SetStringItem(index, 6, data[6])
+                        else:
+                            self.data_store.add_packet(ip_packet)
+                            data_ = {1: (str(ip_packet.id),str(time.clock()),str(ip_packet.source_addr),str(ip_packet.dest_addr),str(len(ip_packet.data)),ip_packet.getprotocol(),str(ip_packet.ttl))}  
+                            items = data_.items()
 
-                        for key, data in items:
-                            index = self.list.InsertStringItem(sys.maxint, data[0])
-                            self.list.SetStringItem(index, 1, data[1])
-                            self.list.SetStringItem(index, 2, data[2])
-                            self.list.SetStringItem(index, 3, data[3])
-                            self.list.SetStringItem(index, 4, data[4])
-                            self.list.SetStringItem(index, 5, data[5])
-                            self.list.SetStringItem(index, 6, data[6])
+                            for key, data in items:
+                                index = self.list.InsertStringItem(sys.maxint, data[0])
+                                self.list.SetStringItem(index, 1, data[1])
+                                self.list.SetStringItem(index, 2, data[2])
+                                self.list.SetStringItem(index, 3, data[3])
+                                self.list.SetStringItem(index, 4, data[4])
+                                self.list.SetStringItem(index, 5, data[5])
+                                self.list.SetStringItem(index, 6, data[6])
                         
-                        self.data_store.add_packet(ip_packet)
                         # ip_packet.parse_ip_packet(packet)
                         #fire event
                         #print "ip packet",ip_packet
@@ -272,7 +313,7 @@ class Nacsnif(wx.Frame):
         # print "Out"
 
     def open_packets(self,event):
-        list_packets = self.data_store.readfile()
+        list_packets = self.data_store.readfile(None)
 
         for packet in list_packets:
             dest_mac, source_mac, eth_protocol = self.sniffer_obj.parse_ethernet_header(packet)
@@ -280,8 +321,7 @@ class Nacsnif(wx.Frame):
                 print "Loading IP Packet"
                 # self.sniffer_obj.parse_ip_packet(packet)
                 ip_packet = ipv4datagram(source_mac,dest_mac,eth_protocol,packet)
-                global serial_num
-                serial_num+=1
+                self.data_store.add_packet(ip_packet)
                 data_ = {1: (str(ip_packet.id),str(time.clock()),str(ip_packet.source_addr),str(ip_packet.dest_addr),str(eth_protocol),ip_packet.getprotocol(),str(ip_packet.ttl))}  
                 items = data_.items()
                 for key, data in items:
@@ -294,11 +334,49 @@ class Nacsnif(wx.Frame):
                     self.list.SetStringItem(index, 6, data[6])
 
 
+    def OnOpen(self,e):
+        # In this case, the dialog is created within the method because
+        # the directory name, etc, may be changed during the running of the
+        # application. In theory, you could create one earlier, store it in
+        # your frame object and change it when it was called to reflect
+        # current parameters / values
+        dlg = wx.FileDialog(self, "Choose a file", self.dirname, "", "*.*|*", wx.OPEN)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.filename=dlg.GetFilename()
+            self.dirname=dlg.GetDirectory()
+
+            filehandle=open(os.path.join(self.dirname, self.filename),'rb')
+            print os.path.join(self.dirname, self.filename)
+            list_packets = self.data_store.readfile(filehandle)
+            
+            #self.control.SetValue(filehandle.read())
+
+        dlg.Destroy()
+        
+
+        for packet in list_packets:
+            dest_mac, source_mac, eth_protocol = self.sniffer_obj.parse_ethernet_header(packet)
+            if eth_protocol == 8:
+                print "Loading IP Packet"
+                # self.sniffer_obj.parse_ip_packet(packet)
+                ip_packet = ipv4datagram(source_mac,dest_mac,eth_protocol,packet)
+                self.data_store.add_packet(ip_packet)
+                data_ = {1: (str(ip_packet.id),str(time.clock()),str(ip_packet.source_addr),str(ip_packet.dest_addr),str(eth_protocol),ip_packet.getprotocol(),str(ip_packet.ttl))}  
+                items = data_.items()
+                for key, data in items:
+                    index = self.list.InsertStringItem(sys.maxint, data[0])
+                    self.list.SetStringItem(index, 1, data[1])
+                    self.list.SetStringItem(index, 2, data[2])
+                    self.list.SetStringItem(index, 3, data[3])
+                    self.list.SetStringItem(index, 4, data[4])
+                    self.list.SetStringItem(index, 5, data[5])
+                    self.list.SetStringItem(index, 6, data[6])
+
+            filehandle.close()
+
     def OnReload(self,e):
         # self.sniffer_obj.close()
         self.list.DeleteAllItems()
-        global serial_num
-        serial_num = 0
 
     def handle_ip_packet(self,sender,earg):
         print "In Handler"
@@ -306,7 +384,6 @@ class Nacsnif(wx.Frame):
             # print earg.dest_mac_addr
             pass
     
-
 
 def display_menu_bar(tempo):
     menubar = wx.MenuBar()
@@ -316,15 +393,12 @@ def display_menu_bar(tempo):
     save_as_item = fileMenu.Append(wx.ID_SAVE,   'Save', 'Save application')        
     exit_item = fileMenu.Append(wx.ID_EXIT, 'Quit', 'Quit application')
     menubar.Append(fileMenu, '&File')
-    
-    tempo.Bind(wx.EVT_MENU, tempo.OnQuit, exit_item)
-    # tempo.Bind(wx.EVT_MENU, tempo.On_save, save_as_item)
-    
+        
     edit_menu = wx.Menu()
     copy_item = edit_menu.Append(wx.ID_COPY,   'Copy', 'Copy application')
     find_packet_item = edit_menu.Append(wx.ID_ANY,   'Find Packet', 'Find packet application')
     find_next_item = edit_menu.Append(wx.ID_ANY,   'Find Next', 'Finding next packet application')
-    find_previous_item = edit_menu.Append(wx.ID_ANY,   'Find Previous', 'finding Previous packet application')        
+    find_previous_item = edit_menu.Append(wx.ID_ANY,   'Find Previous', 'finding Previous packet application')
     menubar.Append(edit_menu, '&Edit')
 
     go_menu = wx.Menu()
@@ -337,9 +411,14 @@ def display_menu_bar(tempo):
     help_menu=wx.Menu()
     Help=help_menu.Append(wx.ID_ANY,'Help','about application')
     menubar.Append(help_menu,'&Help')
-    tempo.Bind(wx.EVT_MENU,tempo.OnHelp,Help)
-    tempo.SetMenuBar(menubar)
 
+    tempo.SetMenuBar(menubar)
+    
+    tempo.Bind(wx.EVT_MENU, tempo.OnQuit, exit_item)
+    tempo.Bind(wx.EVT_MENU,tempo.OnHelp,Help)
+    tempo.Bind(wx.EVT_MENU,tempo.OnSave,save_as_item)
+    tempo.Bind(wx.EVT_MENU,tempo.OnOpen,open_item)
+    # wx.EVT_MENU(tempo,101,tempo.OnSave )
 
 def capturewindow_start(parent,arg):
     app = wx.App(False)
@@ -347,7 +426,6 @@ def capturewindow_start(parent,arg):
     frame.Show()
     app.MainLoop()
     # self.sniffer_obj.start()
-
 
 if __name__ == "__main__":
     app = wx.App(False)
